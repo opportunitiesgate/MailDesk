@@ -19,7 +19,7 @@ export async function getDatabase() {
   return process.env.MONGODB_DB_NAME ? client.db(process.env.MONGODB_DB_NAME) : client.db()
 }
 
-export type UserRole = "superadmin" | "admin"
+export type UserRole = "superadmin" | "admin" | "client"
 export type MailDeskUser = {
   _id?: unknown
   name?: string
