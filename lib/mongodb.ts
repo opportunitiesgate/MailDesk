@@ -13,9 +13,10 @@ function getMongoClientPromise() {
   return promise
 }
 
-export const databaseName = process.env.MONGODB_DB_NAME || "mail-desk"
+export const databaseName = process.env.MONGODB_DB_NAME || "URI default"
 export async function getDatabase() {
-  return (await getMongoClientPromise()).db(databaseName)
+  const client = await getMongoClientPromise()
+  return process.env.MONGODB_DB_NAME ? client.db(process.env.MONGODB_DB_NAME) : client.db()
 }
 
 export type UserRole = "superadmin" | "admin"
