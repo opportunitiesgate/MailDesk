@@ -1,19 +1,21 @@
 import { MongoClient } from "mongodb"
 
-const uri = process.env.MONGODB_URI
-if (!uri) throw new Error("MONGODB_URI is not configured")
-
 declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined
 }
 
-const client = new MongoClient(uri)
-export const mongoClient = global._mongoClientPromise ?? client.connect()
-if (process.env.NODE_ENV !== "production") global._mongoClientPromise = mongoClient
+function getMongoClientPromise() {
+  const uri = process.env.MONGODB_URI
+  if (!uri) throw new Error("MONGODB_URI is not configured")
+  const client = new MongoClient(uri)
+  const promise = global._mongoClientPromise ?? client.connect()
+  if (process.env.NODE_ENV !== "production") global._mongoClientPromise = promise
+  return promise
+}
 
 export const databaseName = process.env.MONGODB_DB_NAME || "mail-desk"
 export async function getDatabase() {
-  return (await mongoClient).db(databaseName)
+  return (await getMongoClientPromise()).db(databaseName)
 }
 
 export type UserRole = "superadmin" | "admin"
