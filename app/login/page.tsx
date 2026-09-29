@@ -13,7 +13,7 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
     const form = new FormData(event.currentTarget)
-    const result = await signIn("credentials", { email: form.get("email"), password: form.get("password"), redirect: false })
+    const result = await signIn("credentials", { email: String(form.get("email") ?? "").trim().toLowerCase(), password: String(form.get("password") ?? ""), redirect: false, callbackUrl: "/" })
     if (result?.error) {
       setError("Invalid email or password.")
       setLoading(false)

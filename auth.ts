@@ -5,6 +5,7 @@ import { z } from "zod"
 import { findUserByEmail } from "./lib/mongodb"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
@@ -16,8 +17,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         const parsed = z.object({ email: z.string().email(), password: z.string().min(8) }).safeParse(credentials)
         if (!parsed.success) return null
-        const user = await findUserByEmail(parsed.data.email)
-        if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) return null
+        const user = await findUserByEmail(parsed.data.email.trim().toLowerCase())
+        if (!user || user.active !== true || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) return null
         return { id: String(user._id), name: user.name ?? user.email, email: user.email, role: user.role }
       },
     }),
