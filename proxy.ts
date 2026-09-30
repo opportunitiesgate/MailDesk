@@ -5,12 +5,14 @@ export default auth((request) => {
   const pathname = request.nextUrl.pathname
   const isLogin = pathname === "/login"
   const isRegister = pathname === "/register"
+  const isForgotPassword = pathname === "/forgot-password"
+  const isResetPassword = pathname === "/reset-password"
   const isUserManagement = pathname === "/users" || pathname.startsWith("/users/")
   const isOrganizationManagement = pathname === "/organizations" || pathname.startsWith("/organizations/")
   const isMailing = pathname === "/mailing" || pathname.startsWith("/mailing/")
   const isAdmin = request.auth?.user.role === "superadmin" || request.auth?.user.role === "admin"
 
-  if (!request.auth && !isLogin && !isRegister) return NextResponse.redirect(new URL("/login", request.nextUrl.origin))
+  if (!request.auth && !isLogin && !isRegister && !isForgotPassword && !isResetPassword) return NextResponse.redirect(new URL("/login", request.nextUrl.origin))
   if (request.auth && isLogin) return NextResponse.redirect(new URL("/", request.nextUrl.origin))
   if (request.auth && isUserManagement && !isAdmin) {
     return NextResponse.redirect(new URL("/", request.nextUrl.origin))
@@ -25,4 +27,4 @@ export default auth((request) => {
   return NextResponse.next()
 })
 
-export const config = { matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"] }
+export const config = { matcher: ["/((?!api/(?:auth|register)|_next/static|_next/image|favicon.ico).*)"] }

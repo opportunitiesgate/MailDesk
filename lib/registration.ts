@@ -1,4 +1,34 @@
+import { createHmac, timingSafeEqual } from "crypto"
 import { ObjectId } from "mongodb"
+import { cookies } from "next/headers"
+
+const REGISTRATION_COOKIE = "maildesk_registration"
+
+function registrationSecret() {
+  const secret = process.env.AUTH_SECRET
+  if (!secret) throw new Error("AUTH_SECRET is not configured")
+  return secret
+}
+
+export function createRegistrationToken(userId: string) {
+  const signature = createHmac("sha256", registrationSecret()).update(userId).digest("hex")
+  return `${userId}.${signature}`
+}
+
+export async function getRegistrationOwnerId() {
+  const token = (await cookies()).get(REGISTRATION_COOKIE)?.value
+  if (!token) return null
+  const [userId, signature] = token.split(".")
+  if (!ObjectId.isValid(userId) || !signature) return null
+  const expected = createHmac("sha256", registrationSecret()).update(userId).digest("hex")
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null
+  const db = await getDatabase()
+  const user = await db.collection<RegistrationUser>("users").findOne({ _id: new ObjectId(userId), active: false })
+  return user ? userId : null
+}
+
+export const registrationCookie = REGISTRATION_COOKIE
+
 import { getDatabase, type MailDeskUser } from "./mongodb"
 import { PLANS, type PlanId } from "./plans"
 
@@ -28,13 +58,13 @@ export async function findRegistrationByOwner(ownerId: string) {
 
 export async function createRegistrationUser(input: { firstName: string; lastName: string; email: string; passwordHash: string }) {
   const db = await getDatabase(); const now = new Date()
-  return db.collection<RegistrationUser>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: true, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now } as RegistrationUser)
+  return db.collection<RegistrationUser & { _id?: ObjectId; createdAt: Date }>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: false, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now })
 }
 
 export async function saveSetup(ownerId: string, input: { name: string; slug: string; planId?: PlanId }) {
   const db = await getDatabase(); const now = new Date(); const oid = new ObjectId(ownerId)
   const existing = await db.collection<Setup>("registration_setups").findOne({ ownerId: oid })
-  const values = { name: input.name.trim(), slug: input.slug, ...(input.planId ? { planId: input.planId } : {}), status: input.planId ? "PAYMENT_PENDING" : "ORGANIZATION_INFO_COMPLETED", subdomain: `${input.slug}.${process.env.APP_DOMAIN || "maildesk.local"}`, updatedAt: now }
+  const values = { name: input.name.trim(), slug: input.slug, ...(input.planId ? { planId: input.planId } : {}), status: input.planId ? "PAYMENT_PENDING" : "ORGANIZATION_INFO_COMPLETED", subdomain: `${input.slug}.${process.env.APP_DOMAIN || "opportunitiesgate.net"}`, updatedAt: now }
   if (existing) { await db.collection("registration_setups").updateOne({ _id: existing._id }, { $set: values }); return existing._id }
   const result = await db.collection("registration_setups").insertOne({ ownerId: oid, ...values, createdAt: now }); return result.insertedId
 }
@@ -43,7 +73,7 @@ export async function completeSetup(ownerId: string, planId: PlanId) {
   const db = await getDatabase(); const setup = await findRegistrationByOwner(ownerId); if (!setup?._id) return null
   await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { planId, status: "PAYMENT_CONFIRMED", billingStatus: "active", updatedAt: new Date() } })
   const org = await db.collection("organizations").findOneAndUpdate({ ownerId: new ObjectId(ownerId) }, { $setOnInsert: { name: setup.name, slug: setup.slug, ownerId: new ObjectId(ownerId), planId, active: false, status: "PROVISIONING", createdAt: new Date() }, $set: { updatedAt: new Date() } }, { upsert: true, returnDocument: "after" })
-  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "PROVISIONING" } })
+  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "PROVISIONING", active: true } })
   return org
 }
 
@@ -73,3 +103,18 @@ export function isValidName(value: string) { return value.length >= 2 && value.l
 export function getProvisioningLabel(status: string) { return status === "ACTIVE" ? "Workspace ready" : status === "PROVISIONING_FAILED" ? "Needs attention" : "Setting up your workspace" }
 
 export const PROVISIONING_STEPS = ["Workspace created", "Subdomain provisioned", "Email domain configured", "Email domain verified"] as const
+
+export async function createPasswordResetToken(email: string) {
+  const db = await getDatabase()
+  const token = crypto.randomUUID()
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+  await db.collection("password_reset_tokens").deleteMany({ email: email.toLowerCase() })
+  await db.collection("password_reset_tokens").insertOne({ token, email: email.toLowerCase(), expiresAt, createdAt: new Date() })
+  return token
+}
+
+export async function consumePasswordResetToken(token: string) {
+  const db = await getDatabase()
+  const record = await db.collection<{ token: string; email: string; expiresAt: Date }>("password_reset_tokens").findOneAndDelete({ token, expiresAt: { $gt: new Date() } })
+  return record?.email ?? null
+}

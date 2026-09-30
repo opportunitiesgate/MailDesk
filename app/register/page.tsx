@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { signIn } from "next-auth/react"
 import { useEffect, useMemo, useState } from "react"
 import { Check, ChevronLeft, ChevronRight, Loader2, LockKeyhole, Sparkles } from "lucide-react"
 import { PLANS, type PlanId } from "@/lib/plans"
@@ -26,8 +25,9 @@ export default function RegisterPage() {
       const endpoint = step === 1 ? "/api/register" : step === 2 ? "/api/register/organization" : "/api/register/plan"
       const body = step === 1 ? form : step === 2 ? { name: form.organizationName, slug: form.slug } : { planId: plan }
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Something went wrong")
-      if (step === 1) { const login = await signIn("credentials", { email: form.email, password: form.password, redirect: false }); if (login?.error) throw new Error("Account created, but sign-in could not be completed. Please sign in to continue.") }
+      const contentType = response.headers.get("content-type") || ""
+      const data = contentType.includes("application/json") ? await response.json() : null
+      if (!response.ok) throw new Error(data?.error || "The registration service is unavailable. Please try again.")
       if (step === 3 && data.url) { window.location.href = data.url; return }
       if (step === 3 && data.status === "PROVISIONING") { setStatus(data.status); setStep(4) } else setStep((value) => Math.min(4, value + 1))
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Something went wrong") } finally { setLoading(false) }
@@ -37,7 +37,7 @@ export default function RegisterPage() {
 }
 
 function Field({ label, value, onChange, type = "text", hint, prefix, className = "" }: { label: string; value: string; onChange: (value: string) => void; type?: string; hint?: string; prefix?: string; className?: string }) { return <label className={`grid gap-2 text-sm font-medium ${className}`}><span>{label}</span><span className="flex overflow-hidden rounded-xl border border-slate-200 bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">{prefix && <span className="border-r border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-400">{prefix}</span>}<input required value={value} onChange={(event) => onChange(event.target.value)} type={type} className="min-w-0 flex-1 px-3 py-2.5 outline-none" /></span>{hint && <span className="text-xs font-normal text-slate-400">{hint}</span>}</label> }
-function ProvisionStatus({ status }: { status: string }) { return <div className="py-12 text-center"><div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600"><Sparkles className="size-7" /></div><h2 className="mt-6 text-2xl font-semibold">Setting up your workspace</h2><p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">We&apos;re provisioning your workspace and email domain. This page will update when everything is ready.</p><div className="mt-8 grid gap-3 text-left">{["Creating workspace", "Configuring subdomain", "Setting up email domain", "Verifying DNS records"].map((label, index) => <div key={label} className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm"><span className={`flex size-6 items-center justify-center rounded-full ${status === "ACTIVE" || index === 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>{status === "ACTIVE" || index === 0 ? <Check className="size-3.5" /> : index + 1}</span>{label}</div>)}</div></div>}
+function ProvisionStatus({ status }: { status: string }) { return <div className="py-12 text-center"><div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600"><Sparkles className="size-7" /></div><h2 className="mt-6 text-2xl font-semibold">Setting up your workspace</h2><p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">We&apos;re provisioning your workspace and email domain. Once setup is complete, your account will be active and you can sign in.</p><div className="mt-8 grid gap-3 text-left">{["Creating workspace", "Configuring subdomain", "Setting up email domain", "Verifying DNS records"].map((label, index) => <div key={label} className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm"><span className={`flex size-6 items-center justify-center rounded-full ${status === "ACTIVE" || index === 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>{status === "ACTIVE" || index === 0 ? <Check className="size-3.5" /> : index + 1}</span>{label}</div>)}</div></div>}
 
 export const dynamic = "force-dynamic"
 
