@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { isValidName, isValidSlug, normalizeSlug, saveSetup } from "@/lib/registration"
+
+export async function POST(request: Request) { const session = await auth(); const ownerId = session?.user?.id; if (!ownerId) return NextResponse.json({ error: "Please sign in to continue." }, { status: 401 }); const body = await request.json(); const name = typeof body.name === "string" ? body.name.trim() : ""; const slug = normalizeSlug(typeof body.slug === "string" ? body.slug : ""); if (!isValidName(name) || !isValidSlug(slug)) return NextResponse.json({ error: "Enter a valid organization name and available slug." }, { status: 400 }); try { await saveSetup(ownerId, { name, slug }); return NextResponse.json({ ok: true }) } catch (error) { if (error instanceof Error && error.message.includes("duplicate")) return NextResponse.json({ error: "That workspace slug is already in use." }, { status: 409 }); return NextResponse.json({ error: "Unable to save workspace details." }, { status: 500 }) } }
