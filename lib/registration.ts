@@ -1,14 +1,8 @@
 import { ObjectId } from "mongodb"
 import { getDatabase, type MailDeskUser } from "./mongodb"
+import { PLANS, type PlanId } from "./plans"
 
-export const PLANS = {
-  free: { id: "free", name: "Free", price: 0, description: "For getting started" },
-  starter: { id: "starter", name: "Starter", price: 19, description: "For small teams" },
-  pro: { id: "pro", name: "Pro", price: 49, description: "For growing teams" },
-  business: { id: "business", name: "Business", price: 99, description: "For larger organizations" },
-} as const
-
-export type PlanId = keyof typeof PLANS
+export { PLANS, type PlanId } from "./plans"
 export const RESERVED_SLUGS = new Set(["admin", "api", "app", "mail", "maildesk", "www", "support", "login", "register"])
 export const normalizeSlug = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
 export const isValidSlug = (value: string) => /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/.test(value) && !RESERVED_SLUGS.has(value)

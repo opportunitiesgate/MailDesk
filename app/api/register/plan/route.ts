@@ -1,0 +1,7 @@
+import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { findRegistrationByOwner, validPlan, completeSetup, saveSetup } from "@/lib/registration"
+import { findUserByEmail } from "@/lib/mongodb"
+import { createFreeSubscription, createPlanCheckout } from "@/lib/stripe"
+
+export async function POST(request: Request) { const session = await auth(); const ownerId = session?.user?.id; if (!ownerId) return NextResponse.json({ error: "Please sign in to continue." }, { status: 401 }); const { planId } = await request.json(); if (!validPlan(planId)) return NextResponse.json({ error: "Choose a valid plan." }, { status: 400 }); const setup = await findRegistrationByOwner(ownerId); if (!setup?._id) return NextResponse.json({ error: "Complete workspace details first." }, { status: 400 }); await saveSetup(ownerId, { name: setup.name, slug: setup.slug, planId }); const user = await findUserByEmail(session.user?.email || ""); if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 }); try { if (planId === "free") { await createFreeSubscription({ ownerId, email: user.email, setupId: String(setup._id) }); const organization = await completeSetup(ownerId, planId); return NextResponse.json({ status: "PROVISIONING", organizationId: organization?._id }) } const checkout = await createPlanCheckout({ ownerId, email: user.email, planId, setupId: String(setup._id) }); return NextResponse.json({ url: checkout.url }) } catch { return NextResponse.json({ error: "Unable to start billing. Please try again." }, { status: 503 }) } }
