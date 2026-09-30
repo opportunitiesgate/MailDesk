@@ -25,7 +25,9 @@ export default function RegisterPage() {
       const endpoint = step === 1 ? "/api/register" : step === 2 ? "/api/register/organization" : "/api/register/plan"
       const body = step === 1 ? form : step === 2 ? { name: form.organizationName, slug: form.slug } : { planId: plan }
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Something went wrong")
+      const contentType = response.headers.get("content-type") || ""
+      const data = contentType.includes("application/json") ? await response.json() : null
+      if (!response.ok) throw new Error(data?.error || "The registration service is unavailable. Please try again.")
       if (step === 3 && data.url) { window.location.href = data.url; return }
       if (step === 3 && data.status === "PROVISIONING") { setStatus(data.status); setStep(4) } else setStep((value) => Math.min(4, value + 1))
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Something went wrong") } finally { setLoading(false) }
