@@ -1,4 +1,5 @@
 import { Resend } from "resend"
+import { getDatabase } from "@/lib/mongodb"
 
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY
@@ -20,6 +21,15 @@ export async function POST(request: Request) {
     },
     webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
   })
+
+  const db = await getDatabase()
+  const eventData = event.data as { email_id?: string }
+  const eventId = eventData.email_id ?? `${event.type}:${event.created_at}`
+  await db.collection("mailing_webhooks").updateOne(
+    { eventId },
+    { $set: { eventId, type: event.type, payload: event.data, createdAt: new Date(event.created_at) } },
+    { upsert: true },
+  )
 
   if (event.type === "email.received") {
     const { data: email, error } = await resend.emails.receiving.get(event.data.email_id)
