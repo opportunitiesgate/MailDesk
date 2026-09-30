@@ -11,6 +11,7 @@ const userSchema = z.object({ name: z.string().trim().min(2).max(100), email: z.
 export async function GET() {
   const session = await auth()
   if (!session?.user?.role) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (session.user.role !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
   const users = await listManagedUsers()
   return NextResponse.json(users.map(safeUser))
 }
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   const session = await auth()
   const actorRole = session?.user?.role
   if (!actorRole) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (actorRole !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
   const parsed = userSchema.safeParse(await request.json())
   const role = parsed.success ? normalizeRole(parsed.data.role) : null
   if (!parsed.success || !role || !canManageRole(actorRole, role)) return NextResponse.json({ error: "Invalid user details or insufficient permissions" }, { status: 400 })

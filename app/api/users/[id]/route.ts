@@ -9,6 +9,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const session = await auth()
   const actorRole = session?.user?.role
   if (!actorRole) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (actorRole !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
   const { id } = await params
   const parsed = updateSchema.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: "Invalid user details" }, { status: 400 })
@@ -29,6 +30,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const session = await auth()
   const actorRole = session?.user?.role
   if (!actorRole) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (actorRole !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
   const { id } = await params
   const targetRole = await getManagedUserRole(id)
   if (!targetRole) return NextResponse.json({ error: "User not found" }, { status: 404 })
