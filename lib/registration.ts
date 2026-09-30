@@ -58,13 +58,13 @@ export async function findRegistrationByOwner(ownerId: string) {
 
 export async function createRegistrationUser(input: { firstName: string; lastName: string; email: string; passwordHash: string }) {
   const db = await getDatabase(); const now = new Date()
-  return db.collection<RegistrationUser>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: false, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now } as RegistrationUser)
+  return db.collection<RegistrationUser & { _id?: ObjectId; createdAt: Date }>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: false, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now })
 }
 
 export async function saveSetup(ownerId: string, input: { name: string; slug: string; planId?: PlanId }) {
   const db = await getDatabase(); const now = new Date(); const oid = new ObjectId(ownerId)
   const existing = await db.collection<Setup>("registration_setups").findOne({ ownerId: oid })
-  const values = { name: input.name.trim(), slug: input.slug, ...(input.planId ? { planId: input.planId } : {}), status: input.planId ? "PAYMENT_PENDING" : "ORGANIZATION_INFO_COMPLETED", subdomain: `${input.slug}.${process.env.APP_DOMAIN || "maildesk.local"}`, updatedAt: now }
+  const values = { name: input.name.trim(), slug: input.slug, ...(input.planId ? { planId: input.planId } : {}), status: input.planId ? "PAYMENT_PENDING" : "ORGANIZATION_INFO_COMPLETED", subdomain: `${input.slug}.${process.env.APP_DOMAIN || "opportunitiesgate.net"}`, updatedAt: now }
   if (existing) { await db.collection("registration_setups").updateOne({ _id: existing._id }, { $set: values }); return existing._id }
   const result = await db.collection("registration_setups").insertOne({ ownerId: oid, ...values, createdAt: now }); return result.insertedId
 }
