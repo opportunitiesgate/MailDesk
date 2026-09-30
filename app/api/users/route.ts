@@ -27,36 +27,37 @@ export async function POST(request: Request) {
   const existing = await db.collection("users").findOne({ email })
   if (existing) return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 })
   const password = await generatePassword()
+  const isClient = role === "client"
   const { token, tokenHash } = createActivationToken()
-  const id = await createManagedUser({ name: parsed.data.name, email, role, passwordHash: await bcrypt.hash(password, 12), activationTokenHash: tokenHash })
+  const id = await createManagedUser({
+    name: parsed.data.name,
+    email,
+    role,
+    passwordHash: await bcrypt.hash(password, 12),
+    activationTokenHash: isClient ? tokenHash : "",
+  })
+
   const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || new URL(request.url).origin
+  const loginUrl = process.env.MAILDESK_LOGIN_URL || `${baseUrl}/login`
   const activationUrl = `${baseUrl}/activate/${token}`
+  if (!isClient) await db.collection("users").updateOne({ _id: id }, { $set: { active: true }, $unset: { activationTokenHash: "" } })
+
   const resend = new Resend(process.env.RESEND_API_KEY)
-  const templateId = role === "admin"
-    ? process.env.RESEND_ADMIN_WELCOME_TEMPLATE_ID
-    : process.env.RESEND_USER_ACTIVATION_TEMPLATE_ID
-  const emailPayload = templateId
-    ? {
-        from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>",
-        to: [email],
-        template: {
-          id: templateId,
-          variables: {
-            NAME: parsed.data.name,
-            ROLE: role,
-            ACTIVATION_URL: activationUrl,
-            TEMPORARY_PASSWORD: password,
-          },
-        },
-      }
-    : {
-        from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>",
-        to: [email],
-        subject: role === "admin" ? "Welcome to Mail Desk" : "Activate your Mail Desk account",
-        html: `<p>Hi ${parsed.data.name},</p><p>Your Mail Desk account has been created with the <strong>${role}</strong> role.</p><p><a href="${activationUrl}">Activate your account</a></p><p>For security, your temporary password is: <strong>${password}</strong></p>`,
-      }
-  const { data: sentEmail, error } = await resend.emails.send(emailPayload, { idempotencyKey: `user-invitation/${id}` })
-  if (sentEmail?.id) await db.collection("email_events").insertOne({ emailId: sentEmail.id, type: "email.sent", recipient: email, userId: id, createdAt: new Date() })
-  if (error) return NextResponse.json({ error: "User created, but invitation email could not be sent" }, { status: 502 })
-  return NextResponse.json({ id: String(id), emailId: sentEmail?.id, message: "User created and invitation sent" }, { status: 201 })
+  const event = isClient ? "client-welcome-activation" : "maildesk-employee-welcome"
+  const payload = isClient
+    ? { name: parsed.data.name, email, password, activation_url: activationUrl }
+    : { name: parsed.data.name, email, password, login_url: loginUrl }
+  const { data: sentEvent, error } = await resend.events.send({ event, email, payload })
+
+  await db.collection("email_events").insertOne({
+    type: error ? "email.event_failed" : "email.event.sent",
+    event,
+    recipient: email,
+    userId: id,
+    providerId: sentEvent?.id,
+    error: error?.message,
+    createdAt: new Date(),
+  })
+  if (error) return NextResponse.json({ error: "User created, but the welcome event could not be sent" }, { status: 502 })
+  return NextResponse.json({ id: String(id), eventId: sentEvent?.id, message: "User created and welcome event sent" }, { status: 201 })
 }
