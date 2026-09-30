@@ -18,7 +18,10 @@ export function stripeIsConfigured() {
 }
 
 export function getAppUrl() {
-  return process.env.APP_URL || process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}` || "http://localhost:3000"
+  return (
+    process.env.APP_URL?.replace(/\/$/, "") ||
+    "https://mail.opportunitiesgate.net"
+  )
 }
 
 export async function createPlanCheckout(input: { ownerId: string; email: string; planId: "starter" | "pro" | "business"; setupId: string }) {
