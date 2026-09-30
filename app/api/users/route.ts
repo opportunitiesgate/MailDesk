@@ -32,7 +32,31 @@ export async function POST(request: Request) {
   const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || new URL(request.url).origin
   const activationUrl = `${baseUrl}/activate/${token}`
   const resend = new Resend(process.env.RESEND_API_KEY)
-  const { error } = await resend.emails.send({ from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>", to: [email], subject: role === "admin" ? "Welcome to Mail Desk" : "Activate your Mail Desk account", html: `<p>Hi ${parsed.data.name},</p><p>Your Mail Desk account has been created with the <strong>${role}</strong> role.</p><p><a href="${activationUrl}">Activate your account</a></p><p>For security, your temporary password is: <strong>${password}</strong></p><p>Please change it after signing in.</p>` }, { idempotencyKey: `user-invitation/${id}` })
+  const templateId = role === "admin"
+    ? process.env.RESEND_ADMIN_WELCOME_TEMPLATE_ID
+    : process.env.RESEND_USER_ACTIVATION_TEMPLATE_ID
+  const emailPayload = templateId
+    ? {
+        from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>",
+        to: [email],
+        template: {
+          id: templateId,
+          variables: {
+            NAME: parsed.data.name,
+            ROLE: role,
+            ACTIVATION_URL: activationUrl,
+            TEMPORARY_PASSWORD: password,
+          },
+        },
+      }
+    : {
+        from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>",
+        to: [email],
+        subject: role === "admin" ? "Welcome to Mail Desk" : "Activate your Mail Desk account",
+        html: `<p>Hi ${parsed.data.name},</p><p>Your Mail Desk account has been created with the <strong>${role}</strong> role.</p><p><a href="${activationUrl}">Activate your account</a></p><p>For security, your temporary password is: <strong>${password}</strong></p>`,
+      }
+  const { data: sentEmail, error } = await resend.emails.send(emailPayload, { idempotencyKey: `user-invitation/${id}` })
+  if (sentEmail?.id) await db.collection("email_events").insertOne({ emailId: sentEmail.id, type: "email.sent", recipient: email, userId: id, createdAt: new Date() })
   if (error) return NextResponse.json({ error: "User created, but invitation email could not be sent" }, { status: 502 })
-  return NextResponse.json({ id: String(id), message: "User created and invitation sent" }, { status: 201 })
+  return NextResponse.json({ id: String(id), emailId: sentEmail?.id, message: "User created and invitation sent" }, { status: 201 })
 }
