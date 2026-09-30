@@ -6,7 +6,7 @@ import { getDatabase } from "../../../lib/mongodb"
 import bcrypt from "bcryptjs"
 import { Resend } from "resend"
 
-const userSchema = z.object({ name: z.string().trim().min(2).max(100), email: z.string().email(), role: z.string().default("client") })
+const userSchema = z.object({ name: z.string().trim().min(2).max(100), email: z.string().email(), deliveryEmail: z.string().email().optional(), role: z.string().default("client") })
 
 export async function GET() {
   const session = await auth()
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
   const role = parsed.success ? normalizeRole(parsed.data.role) : null
   if (!parsed.success || !role || !canManageRole(actorRole, role)) return NextResponse.json({ error: "Invalid user details or insufficient permissions" }, { status: 400 })
   const email = parsed.data.email.toLowerCase()
+  const deliveryEmail = (parsed.data.deliveryEmail || parsed.data.email).toLowerCase()
   const db = await getDatabase()
   const existing = await db.collection("users").findOne({ email })
   if (existing) return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 })
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   const id = await createManagedUser({
     name: parsed.data.name,
     email,
+    deliveryEmail,
     role,
     passwordHash: await bcrypt.hash(password, 12),
     ...(activation ? { activationTokenHash: activation.tokenHash } : {}),
@@ -45,7 +47,7 @@ export async function POST(request: Request) {
   const event = isEmployee ? "maildesk-employee-welcome" : "client-welcome-activation"
   const { error } = await resend.events.send({
     event,
-    email,
+    email: deliveryEmail,
     payload: {
       name: parsed.data.name,
       email,

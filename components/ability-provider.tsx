@@ -9,7 +9,7 @@ function AbilitySession({ children }: { children: ReactNode }) {
   const { data: session } = useSession()
   const ability = useMemo(() => defineAbilityFor(roleFromSession(session?.user?.role)), [session?.user?.role])
 
-  return <CaslAbilityProvider ability={ability}>{children}</CaslAbilityProvider>
+  return <CaslAbilityProvider value={ability}>{children}</CaslAbilityProvider>
 }
 
 export function AbilityProvider({ children }: { children: ReactNode }) {

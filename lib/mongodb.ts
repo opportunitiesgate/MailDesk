@@ -24,6 +24,7 @@ export type MailDeskUser = {
   _id?: unknown
   name?: string
   email: string
+  deliveryEmail?: string
   passwordHash: string
   role: UserRole
   active: boolean
