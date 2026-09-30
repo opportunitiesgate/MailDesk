@@ -4,12 +4,14 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { ArrowLeft, Check, Loader2, MoreHorizontal, Plus, Search, Shield, Trash2, Users, X } from "lucide-react"
 
-type User = { _id: string; name?: string; email: string; deliveryEmail?: string; role: "superadmin" | "admin" | "client"; active: boolean; createdAt?: string }
+type User = { _id: string; name?: string; email: string; deliveryEmail?: string; role: "superadmin" | "admin" | "client"; organizationId?: string; active: boolean; createdAt?: string }
+type Organization = { id: string; name: string; slug: string; active: boolean }
 
 const roleLabel = { superadmin: "Super admin", admin: "Admin", client: "Client" }
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")

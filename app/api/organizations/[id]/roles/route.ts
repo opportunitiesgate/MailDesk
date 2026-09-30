@@ -40,5 +40,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   return NextResponse.json({ id: String(result.insertedId), organizationId: id, ...parsed.data }, { status: 201 })
 }
 
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params
+  const access = await canAccessOrganization(id)
+  if (!access.session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!access.allowed) return NextResponse.json({ error: "Organization access denied" }, { status: 403 })
+  const roleId = new URL(request.url).searchParams.get("roleId")
+  if (!roleId) return NextResponse.json({ error: "Role id is required" }, { status: 400 })
+  const parsed = roleSchema.partial().safeParse(await request.json())
+  if (!parsed.success || Object.keys(parsed.data).length === 0) return NextResponse.json({ error: "Invalid role details" }, { status: 400 })
+  const db = await getDatabase()
+  const result = await db.collection("organization_roles").updateOne(
+    { _id: new (await import("mongodb")).ObjectId(roleId), organizationId: id },
+    { $set: { ...parsed.data, updatedAt: new Date() } },
+  )
+  if (!result.matchedCount) return NextResponse.json({ error: "Role not found" }, { status: 404 })
+  return NextResponse.json({ message: "Role updated" })
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params
+  const access = await canAccessOrganization(id)
+  if (!access.session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!access.allowed) return NextResponse.json({ error: "Organization access denied" }, { status: 403 })
+  const roleId = new URL(request.url).searchParams.get("roleId")
+  if (!roleId) return NextResponse.json({ error: "Role id is required" }, { status: 400 })
+  const db = await getDatabase()
+  const result = await db.collection("organization_roles").deleteOne({ _id: new (await import("mongodb")).ObjectId(roleId), organizationId: id })
+  if (!result.deletedCount) return NextResponse.json({ error: "Role not found" }, { status: 404 })
+  return NextResponse.json({ message: "Role deleted" })
+}
+
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
