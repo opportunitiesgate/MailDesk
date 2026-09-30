@@ -1,15 +1,17 @@
 import { AbilityBuilder, createMongoAbility, type MongoAbility } from "@casl/ability"
 
-export type Role = "superadmin" | "admin" | "client"
+export type Role = string
 export type Action = "manage" | "read" | "create" | "update" | "delete"
 export type Subject = "User" | "Email" | "Chat" | "all"
 
 export type AppAbility = MongoAbility<[Action, Subject]>
 
-export function defineAbilityFor(role: Role | undefined): AppAbility {
+export function defineAbilityFor(role: Role | undefined, abilities?: Array<{ module: Subject; action: Action }>): AppAbility {
   const { can, cannot, build } = new AbilityBuilder<AppAbility>(createMongoAbility)
 
-  if (role === "superadmin") {
+  if (abilities?.length) {
+    for (const ability of abilities) can(ability.action, ability.module)
+  } else if (role === "superadmin") {
     can("manage", "all")
   } else if (role === "admin") {
     can("read", "User")
