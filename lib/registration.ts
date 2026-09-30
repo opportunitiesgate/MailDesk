@@ -103,3 +103,18 @@ export function isValidName(value: string) { return value.length >= 2 && value.l
 export function getProvisioningLabel(status: string) { return status === "ACTIVE" ? "Workspace ready" : status === "PROVISIONING_FAILED" ? "Needs attention" : "Setting up your workspace" }
 
 export const PROVISIONING_STEPS = ["Workspace created", "Subdomain provisioned", "Email domain configured", "Email domain verified"] as const
+
+export async function createPasswordResetToken(email: string) {
+  const db = await getDatabase()
+  const token = crypto.randomUUID()
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+  await db.collection("password_reset_tokens").deleteMany({ email: email.toLowerCase() })
+  await db.collection("password_reset_tokens").insertOne({ token, email: email.toLowerCase(), expiresAt, createdAt: new Date() })
+  return token
+}
+
+export async function consumePasswordResetToken(token: string) {
+  const db = await getDatabase()
+  const record = await db.collection<{ token: string; email: string; expiresAt: Date }>("password_reset_tokens").findOneAndDelete({ token, expiresAt: { $gt: new Date() } })
+  return record?.email ?? null
+}
