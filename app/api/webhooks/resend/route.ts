@@ -14,11 +14,11 @@ export async function POST(request: Request) {
   const event = resend.webhooks.verify({
     payload,
     headers: {
-      "svix-id": request.headers.get("svix-id") ?? "",
-      "svix-timestamp": request.headers.get("svix-timestamp") ?? "",
-      "svix-signature": request.headers.get("svix-signature") ?? "",
+      id: request.headers.get("svix-id") ?? "",
+      timestamp: request.headers.get("svix-timestamp") ?? "",
+      signature: request.headers.get("svix-signature") ?? "",
     },
-    secret: process.env.RESEND_WEBHOOK_SECRET,
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
   })
 
   if (event.type === "email.received") {

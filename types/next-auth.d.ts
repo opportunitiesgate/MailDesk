@@ -7,5 +7,5 @@ declare module "next-auth" {
 }
 
 declare module "next-auth/jwt" {
-  interface JWT { role?: "superadmin" | "admin" }
+  interface JWT { role?: "superadmin" | "admin" | "client" }
 }

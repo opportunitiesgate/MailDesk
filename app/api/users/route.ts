@@ -27,12 +27,30 @@ export async function POST(request: Request) {
   const existing = await db.collection("users").findOne({ email })
   if (existing) return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 })
   const password = await generatePassword()
-  const { token, tokenHash } = createActivationToken()
-  const id = await createManagedUser({ name: parsed.data.name, email, role, passwordHash: await bcrypt.hash(password, 12), activationTokenHash: tokenHash })
+  const isEmployee = role === "admin"
+  const activation = isEmployee ? null : createActivationToken()
+  const id = await createManagedUser({
+    name: parsed.data.name,
+    email,
+    role,
+    passwordHash: await bcrypt.hash(password, 12),
+    ...(activation ? { activationTokenHash: activation.tokenHash } : {}),
+    active: isEmployee,
+  })
   const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || new URL(request.url).origin
-  const activationUrl = `${baseUrl}/activate/${token}`
+  const activationUrl = activation ? `${baseUrl}/activate/${activation.token}` : `${baseUrl}/login`
   const resend = new Resend(process.env.RESEND_API_KEY)
-  const { error } = await resend.emails.send({ from: process.env.RESEND_FROM_EMAIL || "Mail Desk <onboarding@resend.dev>", to: [email], subject: role === "admin" ? "Welcome to Mail Desk" : "Activate your Mail Desk account", html: `<p>Hi ${parsed.data.name},</p><p>Your Mail Desk account has been created with the <strong>${role}</strong> role.</p><p><a href="${activationUrl}">Activate your account</a></p><p>For security, your temporary password is: <strong>${password}</strong></p><p>Please change it after signing in.</p>` }, { idempotencyKey: `user-invitation/${id}` })
-  if (error) return NextResponse.json({ error: "User created, but invitation email could not be sent" }, { status: 502 })
-  return NextResponse.json({ id: String(id), message: "User created and invitation sent" }, { status: 201 })
+  const event = isEmployee ? "maildesk-employee-welcome" : "client-welcome-activation"
+  const { error } = await resend.events.send({
+    event,
+    email,
+    payload: {
+      name: parsed.data.name,
+      email,
+      password,
+      ...(isEmployee ? { login_url: activationUrl } : { activation_url: activationUrl }),
+    },
+  })
+  if (error) return NextResponse.json({ error: "User created, but the welcome event could not be sent" }, { status: 502 })
+  return NextResponse.json({ id: String(id), message: "User created and welcome email queued" }, { status: 201 })
 }

@@ -18,7 +18,7 @@ export async function listManagedUsers() {
   return db.collection<ManagedUser>("users").find({}, { projection: { passwordHash: 0, activationTokenHash: 0 } }).sort({ createdAt: -1 }).toArray()
 }
 
-export async function createManagedUser(input: { name: string; email: string; role: UserRole; passwordHash: string; activationTokenHash: string }) {
+export async function createManagedUser(input: { name: string; email: string; role: UserRole; passwordHash: string; activationTokenHash?: string; active?: boolean }) {
   const db = await getDatabase()
   const now = new Date()
   const result = await db.collection("users").insertOne({
@@ -26,8 +26,8 @@ export async function createManagedUser(input: { name: string; email: string; ro
     email: input.email.toLowerCase(),
     passwordHash: input.passwordHash,
     role: input.role,
-    active: false,
-    activationTokenHash: input.activationTokenHash,
+    active: input.active ?? false,
+    ...(input.activationTokenHash ? { activationTokenHash: input.activationTokenHash } : {}),
     invitedAt: now,
     createdAt: now,
   })
