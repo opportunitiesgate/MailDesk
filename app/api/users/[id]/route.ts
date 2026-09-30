@@ -16,7 +16,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const role = parsed.data.role ? normalizeRole(parsed.data.role) : undefined
   if (parsed.data.role && !role) return NextResponse.json({ error: "Invalid role" }, { status: 400 })
   if (role && !canManageUser(actorRole, role)) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-  const update: { name?: string; email?: string; role?: "superadmin" | "admin" | "client"; active?: boolean } = {
+  const update: { name?: string; email?: string; role?: string; active?: boolean } = {
     name: parsed.data.name,
     email: parsed.data.email,
     active: parsed.data.active,

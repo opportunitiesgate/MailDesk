@@ -6,13 +6,13 @@ import { getDatabase } from "../../../lib/mongodb"
 import bcrypt from "bcryptjs"
 import { Resend } from "resend"
 
-const userSchema = z.object({ name: z.string().trim().min(2).max(100), email: z.string().email(), deliveryEmail: z.string().email().optional(), role: z.string().default("client") })
+const userSchema = z.object({ name: z.string().trim().min(2).max(100), email: z.string().email(), deliveryEmail: z.string().email().optional(), role: z.string().default("client"), organizationId: z.string().trim().min(1).optional() })
 
 export async function GET() {
   const session = await auth()
   if (!session?.user?.role) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
-  const users = await listManagedUsers()
+  if (session.user.role !== "superadmin" && session.user.role !== "admin") return NextResponse.json({ error: "Organization admin access required" }, { status: 403 })
+  const users = await listManagedUsers(session.user.role === "superadmin" ? undefined : session.user.organizationId)
   return NextResponse.json(users.map(safeUser))
 }
 
@@ -20,10 +20,11 @@ export async function POST(request: Request) {
   const session = await auth()
   const actorRole = session?.user?.role
   if (!actorRole) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (actorRole !== "superadmin") return NextResponse.json({ error: "Super admin access required" }, { status: 403 })
+  if (actorRole !== "superadmin" && actorRole !== "admin") return NextResponse.json({ error: "Organization admin access required" }, { status: 403 })
   const parsed = userSchema.safeParse(await request.json())
   const role = parsed.success ? normalizeRole(parsed.data.role) : null
-  if (!parsed.success || !role || !canManageRole(actorRole, role)) return NextResponse.json({ error: "Invalid user details or insufficient permissions" }, { status: 400 })
+  const organizationId = actorRole === "superadmin" ? parsed.success ? parsed.data.organizationId : undefined : session.user.organizationId
+  if (!parsed.success || !role || !canManageRole(actorRole as "superadmin" | "admin", role) || !organizationId && actorRole !== "superadmin") return NextResponse.json({ error: "Invalid user details or insufficient permissions" }, { status: 400 })
   const email = parsed.data.email.toLowerCase()
   const deliveryEmail = (parsed.data.deliveryEmail || parsed.data.email).toLowerCase()
   const db = await getDatabase()
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     email,
     deliveryEmail,
     role,
+    ...(organizationId ? { organizationId } : {}),
     passwordHash: await bcrypt.hash(password, 12),
     ...(activation ? { activationTokenHash: activation.tokenHash } : {}),
     active: isEmployee,

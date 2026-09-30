@@ -19,7 +19,23 @@ export async function getDatabase() {
   return process.env.MONGODB_DB_NAME ? client.db(process.env.MONGODB_DB_NAME) : client.db()
 }
 
-export type UserRole = "superadmin" | "admin" | "client"
+export type UserRole = "superadmin" | "admin" | "client" | string
+export type AbilityAction = "manage" | "read" | "create" | "update" | "delete"
+export type AbilityModule = "User" | "Email" | "Chat"
+export type Organization = {
+  _id?: unknown
+  name: string
+  slug: string
+  active: boolean
+  createdAt: Date
+}
+export type OrganizationRole = {
+  _id?: unknown
+  organizationId: unknown
+  name: string
+  abilities: Array<{ module: AbilityModule; actions: AbilityAction[] }>
+  createdAt: Date
+}
 export type MailDeskUser = {
   _id?: unknown
   name?: string
@@ -27,6 +43,7 @@ export type MailDeskUser = {
   deliveryEmail?: string
   passwordHash: string
   role: UserRole
+  organizationId?: unknown
   active: boolean
 }
 

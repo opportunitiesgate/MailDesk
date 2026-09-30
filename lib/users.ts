@@ -13,12 +13,13 @@ export function createActivationToken() {
   return { token, tokenHash: hashToken(token) }
 }
 
-export async function listManagedUsers() {
+export async function listManagedUsers(organizationId?: string) {
   const db = await getDatabase()
-  return db.collection<ManagedUser>("users").find({}, { projection: { passwordHash: 0, activationTokenHash: 0 } }).sort({ createdAt: -1 }).toArray()
+  const filter = organizationId ? { organizationId } : {}
+  return db.collection<ManagedUser>("users").find(filter, { projection: { passwordHash: 0, activationTokenHash: 0 } }).sort({ createdAt: -1 }).toArray()
 }
 
-export async function createManagedUser(input: { name: string; email: string; deliveryEmail: string; role: UserRole; passwordHash: string; activationTokenHash?: string; active?: boolean }) {
+export async function createManagedUser(input: { name: string; email: string; deliveryEmail: string; role: UserRole; organizationId?: string; passwordHash: string; activationTokenHash?: string; active?: boolean }) {
   const db = await getDatabase()
   const now = new Date()
   const result = await db.collection("users").insertOne({
@@ -27,6 +28,7 @@ export async function createManagedUser(input: { name: string; email: string; de
     deliveryEmail: input.deliveryEmail.toLowerCase(),
     passwordHash: input.passwordHash,
     role: input.role,
+    ...(input.organizationId ? { organizationId: input.organizationId } : {}),
     active: input.active ?? false,
     ...(input.activationTokenHash ? { activationTokenHash: input.activationTokenHash } : {}),
     invitedAt: now,
@@ -35,7 +37,7 @@ export async function createManagedUser(input: { name: string; email: string; de
   return result.insertedId
 }
 
-export async function updateManagedUser(id: string, input: { name?: string; email?: string; role?: UserRole; active?: boolean }) {
+export async function updateManagedUser(id: string, input: { name?: string; email?: string; role?: string; active?: boolean }) {
   const db = await getDatabase()
   const { ObjectId } = await import("mongodb")
   if (!ObjectId.isValid(id)) return false
@@ -84,5 +86,5 @@ export function canManageUser(actor: UserRole, target: UserRole) {
 }
 
 export function normalizeRole(role: string): UserRole | null {
-  return role === "superadmin" || role === "admin" || role === "client" ? role : null
+  return role.trim().length >= 2 && role.trim().length <= 60 ? role.trim() : null
 }
