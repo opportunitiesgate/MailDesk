@@ -71,9 +71,9 @@ export async function saveSetup(ownerId: string, input: { name: string; slug: st
 
 export async function completeSetup(ownerId: string, planId: PlanId) {
   const db = await getDatabase(); const setup = await findRegistrationByOwner(ownerId); if (!setup?._id) return null
-  await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { planId, status: "PAYMENT_CONFIRMED", billingStatus: "active", updatedAt: new Date() } })
-  const org = await db.collection("organizations").findOneAndUpdate({ ownerId: new ObjectId(ownerId) }, { $setOnInsert: { name: setup.name, slug: setup.slug, ownerId: new ObjectId(ownerId), planId, active: false, status: "PROVISIONING", createdAt: new Date() }, $set: { updatedAt: new Date() } }, { upsert: true, returnDocument: "after" })
-  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "PROVISIONING", active: true } })
+  await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { planId, status: "ACTIVE", billingStatus: "active", updatedAt: new Date() } })
+  const org = await db.collection("organizations").findOneAndUpdate({ ownerId: new ObjectId(ownerId) }, { $setOnInsert: { name: setup.name, slug: setup.slug, ownerId: new ObjectId(ownerId), planId, active: true, status: "ACTIVE", createdAt: new Date() }, $set: { planId, active: true, status: "ACTIVE", updatedAt: new Date() } }, { upsert: true, returnDocument: "after" })
+  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "ACTIVE", active: true } })
   return org
 }
 
