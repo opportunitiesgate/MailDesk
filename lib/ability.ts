@@ -29,5 +29,5 @@ export function defineAbilityFor(role: Role | undefined, abilities?: Array<{ mod
 }
 
 export function roleFromSession(role: string | undefined): Role | undefined {
-  return role === "superadmin" || role === "admin" || role === "client" ? role : undefined
+  return role?.trim() || undefined
 }
