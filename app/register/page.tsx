@@ -16,6 +16,19 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { const value = Number(new URLSearchParams(window.location.search).get("step")); if (value >= 1 && value <= 4) setStep(value) }, [])
+  useEffect(() => {
+    if (step !== 4) return
+    let cancelled = false
+    const poll = async () => {
+      const response = await fetch("/api/register/status", { cache: "no-store" })
+      if (!response.ok || cancelled) return
+      const data = await response.json()
+      if (!cancelled) setStatus(data.status)
+    }
+    poll()
+    const timer = window.setInterval(poll, 3000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [step])
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }))
   const canContinue = useMemo(() => step === 1 ? form.firstName && form.lastName && form.email && form.password.length >= 8 : step === 2 ? form.organizationName.length >= 2 && form.slug.length >= 2 : true, [step, form])
 
