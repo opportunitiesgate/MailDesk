@@ -1,4 +1,5 @@
 import Stripe from "stripe"
+import { PLANS, type PlanId } from "@/lib/plans"
 
 export function getStripe() {
   const secret = process.env.STRIPE_SECRET_KEY
@@ -23,11 +24,22 @@ export function getAppUrl() {
 export async function createPlanCheckout(input: { ownerId: string; email: string; planId: "starter" | "pro" | "business"; setupId: string }) {
   if (!stripeIsConfigured()) throw new Error("Stripe is not configured")
   const price = stripePriceIds[input.planId]
-  if (!price) throw new Error(`Stripe price is not configured for ${input.planId}`)
+  const plan = PLANS[input.planId as PlanId]
+  const lineItem = price
+    ? { price, quantity: 1 }
+    : {
+        price_data: {
+          currency: "usd" as const,
+          unit_amount: plan.price * 100,
+          recurring: { interval: "month" as const },
+          product_data: { name: `MailDesk ${plan.name}` },
+        },
+        quantity: 1,
+      }
   return getStripe().checkout.sessions.create({
     mode: "subscription",
     customer_email: input.email,
-    line_items: [{ price, quantity: 1 }],
+    line_items: [lineItem],
     metadata: { ownerId: input.ownerId, setupId: input.setupId, planId: input.planId },
     subscription_data: { metadata: { ownerId: input.ownerId, setupId: input.setupId, planId: input.planId } },
     success_url: `${getAppUrl()}/register?step=4&session_id={CHECKOUT_SESSION_ID}`,
