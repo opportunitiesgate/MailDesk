@@ -69,6 +69,15 @@ export async function saveSetup(ownerId: string, input: { name: string; slug: st
   const result = await db.collection("registration_setups").insertOne({ ownerId: oid, ...values, createdAt: now }); return result.insertedId
 }
 
+export async function createWorkspace(ownerId: string, planId: PlanId) {
+  const db = await getDatabase()
+  const setup = await findRegistrationByOwner(ownerId)
+  if (!setup?._id) return null
+  const org = await db.collection("organizations").findOneAndUpdate({ ownerId: new ObjectId(ownerId) }, { $setOnInsert: { name: setup.name, slug: setup.slug, ownerId: new ObjectId(ownerId), planId, active: false, status: "PROVISIONING", createdAt: new Date() }, $set: { planId, active: false, status: "PROVISIONING", updatedAt: new Date() } }, { upsert: true, returnDocument: "after" })
+  await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { status: "PROVISIONING", billingStatus: "active", updatedAt: new Date() } })
+  return org
+}
+
 export async function completeSetup(ownerId: string, planId: PlanId) {
   const db = await getDatabase(); const setup = await findRegistrationByOwner(ownerId); if (!setup?._id) return null
   await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { planId, status: "ACTIVE", billingStatus: "active", updatedAt: new Date() } })
@@ -84,7 +93,72 @@ export function publicPlans() { return Object.values(PLANS) }
 export async function markProvisioningActive(ownerId: string) { const db = await getDatabase(); await db.collection("registration_setups").updateOne({ ownerId: new ObjectId(ownerId) }, { $set: { status: "ACTIVE", updatedAt: new Date() } }); await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { registrationStatus: "ACTIVE" } }) }
 export async function failProvisioning(ownerId: string, error: string) { const db = await getDatabase(); await db.collection("registration_setups").updateOne({ ownerId: new ObjectId(ownerId) }, { $set: { status: "PROVISIONING_FAILED", error: error.slice(0, 500), updatedAt: new Date() } }) }
 
-export async function runProvisioning(ownerId: string) { const setup = await findRegistrationByOwner(ownerId); if (!setup?.planId) return; await completeSetup(ownerId, setup.planId); }
+type ProvisioningStepKey = "workspace" | "subdomain" | "email_domain" | "email_verification"
+
+async function setProvisioningStep(ownerId: string, key: ProvisioningStepKey, status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED", error?: string) {
+  const db = await getDatabase()
+  await db.collection("provisioning_steps").updateOne(
+    { ownerId: new ObjectId(ownerId), key },
+    { $set: { ownerId: new ObjectId(ownerId), key, status, ...(error ? { error: error.slice(0, 500) } : {}), updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true },
+  )
+}
+
+async function godaddyRequest(path: string, init: RequestInit = {}) {
+  const key = process.env.GODADDY_API_KEY
+  const secret = process.env.GODADDY_API_SECRET
+  if (!key || !secret) throw new Error("GoDaddy credentials are not configured")
+  const response = await fetch(`https://api.godaddy.com${path}`, { ...init, headers: { Authorization: `sso-key ${key}:${secret}`, "Content-Type": "application/json", ...(init.headers || {}) } })
+  if (!response.ok) throw new Error(`GoDaddy request failed (${response.status})`)
+  return response
+}
+
+async function provisionEmailDomain(ownerId: string, domain: string) {
+  const resendKey = process.env.RESEND_API_KEY
+  if (!resendKey) throw new Error("RESEND_API_KEY is not configured")
+  const create = await fetch("https://api.resend.com/domains", { method: "POST", headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ name: domain }) })
+  const created = await create.json() as { id?: string; records?: Array<{ record: string; name: string; type: string; value: string; ttl?: number }> ; message?: string }
+  if (!create.ok && !(create.status === 422 && created.message?.toLowerCase().includes("already"))) throw new Error(created.message || "Unable to create email domain")
+  if (!created.id) {
+    const list = await fetch("https://api.resend.com/domains", { headers: { Authorization: `Bearer ${resendKey}` } })
+    const domains = await list.json() as { data?: Array<{ id: string; name: string; records?: typeof created.records }> }
+    const existing = domains.data?.find((item) => item.name === domain)
+    if (!existing) throw new Error("Email domain was not returned by Resend")
+    created.id = existing.id; created.records = existing.records
+  }
+  const records = created.records || []
+  const dnsRecords = records.filter((record) => record.record !== "MX").map((record) => ({ type: record.type, name: record.name.replace(`.${domain}`, "").replace(domain, "@") || "@", data: record.value, ttl: record.ttl || 3600 }))
+  if (dnsRecords.length) await godaddyRequest(`/v1/domains/${process.env.APP_DOMAIN || "opportunitiesgate.net"}/records`, { method: "PATCH", body: JSON.stringify(dnsRecords) })
+  await setProvisioningStep(ownerId, "email_domain", "COMPLETED")
+  const verify = await fetch(`https://api.resend.com/domains/${created.id}/verify`, { method: "POST", headers: { Authorization: `Bearer ${resendKey}` } })
+  if (!verify.ok && verify.status !== 400) throw new Error("Unable to verify email domain")
+  await setProvisioningStep(ownerId, "email_verification", "COMPLETED")
+}
+
+export async function getProvisioningSteps(ownerId: string) {
+  const db = await getDatabase()
+  const rows = await db.collection("provisioning_steps").find({ ownerId: new ObjectId(ownerId) }).toArray()
+  return ["workspace", "subdomain", "email_domain", "email_verification"].map((key) => rows.find((row) => row.key === key)?.status || "PENDING")
+}
+
+export async function runProvisioning(ownerId: string) {
+  const setup = await findRegistrationByOwner(ownerId)
+  if (!setup?.planId) return
+  try {
+    await setProvisioningStep(ownerId, "workspace", "IN_PROGRESS")
+    await createWorkspace(ownerId, setup.planId)
+    await setProvisioningStep(ownerId, "workspace", "COMPLETED")
+    await setProvisioningStep(ownerId, "subdomain", "IN_PROGRESS")
+    await godaddyRequest(`/v1/domains/${process.env.APP_DOMAIN || "opportunitiesgate.net"}/records`, { method: "PATCH", body: JSON.stringify([{ type: "CNAME", name: setup.slug, data: process.env.VERCEL_PROJECT_PRODUCTION_URL || "cname.vercel-dns.com", ttl: 3600 }]) })
+    await setProvisioningStep(ownerId, "subdomain", "COMPLETED")
+    await setProvisioningStep(ownerId, "email_domain", "IN_PROGRESS")
+    await provisionEmailDomain(ownerId, setup.subdomain || `${setup.slug}.${process.env.APP_DOMAIN || "opportunitiesgate.net"}`)
+    await markProvisioningActive(ownerId)
+  } catch (error) {
+    await failProvisioning(ownerId, error instanceof Error ? error.message : "Provisioning failed")
+    throw error
+  }
+}
 
 export function isPendingStatus(value?: string) { return value === "PENDING_ORGANIZATION_SETUP" || value === "PROVISIONING" || value === "PROVISIONING_FAILED" }
 
