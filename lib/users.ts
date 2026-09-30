@@ -37,27 +37,27 @@ export async function createManagedUser(input: { name: string; email: string; de
   return result.insertedId
 }
 
-export async function updateManagedUser(id: string, input: { name?: string; email?: string; role?: string; active?: boolean }) {
+export async function updateManagedUser(id: string, input: { name?: string; email?: string; role?: string; active?: boolean }, organizationId?: string) {
   const db = await getDatabase()
   const { ObjectId } = await import("mongodb")
   if (!ObjectId.isValid(id)) return false
-  const result = await db.collection("users").updateOne({ _id: new ObjectId(id) }, { $set: { ...input, ...(input.email ? { email: input.email.toLowerCase() } : {}), updatedAt: new Date() } })
+  const result = await db.collection("users").updateOne({ _id: new ObjectId(id), ...(organizationId ? { organizationId } : {}) }, { $set: { ...input, ...(input.email ? { email: input.email.toLowerCase() } : {}), updatedAt: new Date() } })
   return result.matchedCount > 0
 }
 
-export async function getManagedUserRole(id: string) {
+export async function getManagedUserRole(id: string, organizationId?: string) {
   const db = await getDatabase()
   const { ObjectId } = await import("mongodb")
   if (!ObjectId.isValid(id)) return null
-  const user = await db.collection<Pick<MailDeskUser, "role">>("users").findOne({ _id: new ObjectId(id) }, { projection: { role: 1 } })
+  const user = await db.collection<Pick<MailDeskUser, "role">>("users").findOne({ _id: new ObjectId(id), ...(organizationId ? { organizationId } : {}) }, { projection: { role: 1 } })
   return user?.role ?? null
 }
 
-export async function deleteManagedUser(id: string) {
+export async function deleteManagedUser(id: string, organizationId?: string) {
   const db = await getDatabase()
   const { ObjectId } = await import("mongodb")
   if (!ObjectId.isValid(id)) return false
-  const result = await db.collection("users").deleteOne({ _id: new ObjectId(id) })
+  const result = await db.collection("users").deleteOne({ _id: new ObjectId(id), ...(organizationId ? { organizationId } : {}) })
   return result.deletedCount > 0
 }
 
