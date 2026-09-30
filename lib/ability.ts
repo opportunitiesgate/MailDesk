@@ -2,7 +2,7 @@ import { AbilityBuilder, createMongoAbility, type MongoAbility } from "@casl/abi
 
 export type Role = string
 export type Action = "manage" | "read" | "create" | "update" | "delete"
-export type Subject = "User" | "Email" | "Chat" | "all"
+export type Subject = "User" | "Email" | "Chat" | "Organization" | "all"
 
 export type AppAbility = MongoAbility<[Action, Subject]>
 
@@ -14,6 +14,7 @@ export function defineAbilityFor(role: Role | undefined, abilities?: Array<{ mod
   } else if (role === "superadmin") {
     can("manage", "all")
   } else if (role === "admin") {
+    can("read", "Organization")
     can("read", "User")
     can("read", "Email")
     can("manage", "Chat")

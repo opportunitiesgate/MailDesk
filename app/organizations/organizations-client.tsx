@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { Can } from "@casl/react"
 import { FormEvent, useState } from "react"
 import { ArrowLeft, Building2, Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react"
 
