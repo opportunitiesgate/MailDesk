@@ -9,6 +9,9 @@ export async function GET() {
 
   const db = await getDatabase()
   const organizationId = session.user.role === "superadmin" ? undefined : session.user.organizationId
+  if (session.user.role === "admin" && !organizationId) {
+    return NextResponse.json({ error: "Organization context required" }, { status: 403 })
+  }
   const events = await db.collection("mailing_webhooks").find(organizationId ? { organizationId } : {}).sort({ createdAt: -1 }).limit(100).toArray()
   return NextResponse.json(events.map(({ _id, payload, ...event }) => ({ id: String(_id), ...event, payload })))
 }
