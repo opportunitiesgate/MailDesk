@@ -1,4 +1,34 @@
+import { createHmac, timingSafeEqual } from "crypto"
 import { ObjectId } from "mongodb"
+import { cookies } from "next/headers"
+
+const REGISTRATION_COOKIE = "maildesk_registration"
+
+function registrationSecret() {
+  const secret = process.env.AUTH_SECRET
+  if (!secret) throw new Error("AUTH_SECRET is not configured")
+  return secret
+}
+
+export function createRegistrationToken(userId: string) {
+  const signature = createHmac("sha256", registrationSecret()).update(userId).digest("hex")
+  return `${userId}.${signature}`
+}
+
+export async function getRegistrationOwnerId() {
+  const token = (await cookies()).get(REGISTRATION_COOKIE)?.value
+  if (!token) return null
+  const [userId, signature] = token.split(".")
+  if (!ObjectId.isValid(userId) || !signature) return null
+  const expected = createHmac("sha256", registrationSecret()).update(userId).digest("hex")
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null
+  const db = await getDatabase()
+  const user = await db.collection<RegistrationUser>("users").findOne({ _id: new ObjectId(userId), active: false })
+  return user ? userId : null
+}
+
+export const registrationCookie = REGISTRATION_COOKIE
+
 import { getDatabase, type MailDeskUser } from "./mongodb"
 import { PLANS, type PlanId } from "./plans"
 
@@ -28,7 +58,7 @@ export async function findRegistrationByOwner(ownerId: string) {
 
 export async function createRegistrationUser(input: { firstName: string; lastName: string; email: string; passwordHash: string }) {
   const db = await getDatabase(); const now = new Date()
-  return db.collection<RegistrationUser>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: true, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now } as RegistrationUser)
+  return db.collection<RegistrationUser>("users").insertOne({ name: `${input.firstName} ${input.lastName}`, firstName: input.firstName, lastName: input.lastName, email: input.email.toLowerCase(), passwordHash: input.passwordHash, role: "admin", active: false, registrationStatus: "PENDING_ORGANIZATION_SETUP", createdAt: now } as RegistrationUser)
 }
 
 export async function saveSetup(ownerId: string, input: { name: string; slug: string; planId?: PlanId }) {
@@ -43,7 +73,7 @@ export async function completeSetup(ownerId: string, planId: PlanId) {
   const db = await getDatabase(); const setup = await findRegistrationByOwner(ownerId); if (!setup?._id) return null
   await db.collection("registration_setups").updateOne({ _id: setup._id }, { $set: { planId, status: "PAYMENT_CONFIRMED", billingStatus: "active", updatedAt: new Date() } })
   const org = await db.collection("organizations").findOneAndUpdate({ ownerId: new ObjectId(ownerId) }, { $setOnInsert: { name: setup.name, slug: setup.slug, ownerId: new ObjectId(ownerId), planId, active: false, status: "PROVISIONING", createdAt: new Date() }, $set: { updatedAt: new Date() } }, { upsert: true, returnDocument: "after" })
-  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "PROVISIONING" } })
+  await db.collection("users").updateOne({ _id: new ObjectId(ownerId) }, { $set: { organizationId: org?._id, registrationStatus: "PROVISIONING", active: true } })
   return org
 }
 
