@@ -1,4 +1,5 @@
 import { Resend } from "resend"
+import { getDatabase } from "@/lib/mongodb"
 
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY
@@ -14,12 +15,21 @@ export async function POST(request: Request) {
   const event = resend.webhooks.verify({
     payload,
     headers: {
-      "svix-id": request.headers.get("svix-id") ?? "",
-      "svix-timestamp": request.headers.get("svix-timestamp") ?? "",
-      "svix-signature": request.headers.get("svix-signature") ?? "",
+      id: request.headers.get("svix-id") ?? "",
+      timestamp: request.headers.get("svix-timestamp") ?? "",
+      signature: request.headers.get("svix-signature") ?? "",
     },
-    secret: process.env.RESEND_WEBHOOK_SECRET,
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
   })
+
+  const db = await getDatabase()
+  const eventData = event.data as { email_id?: string }
+  const eventId = eventData.email_id ?? `${event.type}:${event.created_at}`
+  await db.collection("mailing_webhooks").updateOne(
+    { eventId },
+    { $set: { eventId, type: event.type, payload: event.data, createdAt: new Date(event.created_at) } },
+    { upsert: true },
+  )
 
   if (event.type === "email.received") {
     const { data: email, error } = await resend.emails.receiving.get(event.data.email_id)

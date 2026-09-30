@@ -18,17 +18,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!parsed.success) return null
         const user = await findUserByEmail(parsed.data.email)
         if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) return null
-        return { id: String(user._id), name: user.name ?? user.email, email: user.email, role: user.role }
+        return { id: String(user._id), name: user.name ?? user.email, email: user.email, role: user.role, organizationId: user.organizationId ? String(user.organizationId) : undefined }
       },
     }),
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user) token.role = user.role
+      if (user) {
+        token.role = user.role
+        token.organizationId = user.organizationId
+      }
       return token
     },
     session({ session, token }) {
-      if (session.user) session.user.role = token.role as "superadmin" | "admin"
+      if (session.user) {
+        session.user.role = token.role ?? "client"
+        session.user.organizationId = token.organizationId
+      }
       return session
     },
   },
